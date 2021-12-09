@@ -134,22 +134,22 @@ const osTimerAttr_t pressureSampleTimer_attributes = {
 };
 /* USER CODE BEGIN PV */
 //Pressure data location for I2C ISR
-uint8_t pressureData[4];
+volatile uint8_t pressureData[4];
 //DMA storage location for Joystick ADC readings:
 volatile uint16_t Joystick[2];
 //button debounce structure
-button_debounce_t button;
+volatile button_debounce_t button;
 //function command list
-uint8_t function_commands[3] = { SetPressure, Purge, RunContinuous };
+const uint8_t function_commands[3] = { SetPressure, Purge, RunContinuous };
 //pressure control variables
-uint8_t row_positions[4] = { 0x00, 0x40, 0x14, 0x54 };
-char* pres_samp_mode = "Press Md";
-char* purge_mode = "Purge Md";
-char* continuous_mode = "Contin Md";
+const uint8_t row_positions[4] = { 0x00, 0x40, 0x14, 0x54 };
+const char* pres_samp_mode = "Press Md";
+const char* purge_mode = "Purge Md";
+const char* continuous_mode = "Contin Md";
 
 //control_packet_t pressureSampleBuffer[3];  //copy and paste this into the auto generated structure.
 //control_variables_t displayQueueBuffer[3];
-control_variables_t ctrl_vars;
+volatile control_variables_t ctrl_vars;
 
 /* USER CODE END PV */
 
@@ -185,7 +185,7 @@ void TriggerPressureSample(void *argument);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	memset(&button, 0, sizeof(button_debounce_t)); //erase
+	memset((void *)&button, 0, sizeof(button_debounce_t)); //erase
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -758,7 +758,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	{
 	case GPIO_PIN_0: // vac drdy, trigger receive interrupt
 		
-		HAL_I2C_Master_Receive_IT(&hi2c3, press_addr, pressureData, sizeof(pressureData));		
+		HAL_I2C_Master_Receive_IT(&hi2c3, press_addr, (uint8_t *)pressureData, sizeof(pressureData));		
 		break;
 	case GPIO_PIN_2: // button press, debounce signaling
 		if (button.flag_debouncing == 0)
@@ -790,7 +790,7 @@ void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
 	//on receipt, send data over queue to thread to decode
 	pressureSampleBuffer[0].id = pressure_sample;
-	pressureSampleBuffer[0].pressure_raw = rawPressureDataFromBytes(pressureData, sizeof(pressureData));
+	pressureSampleBuffer[0].pressure_raw = rawPressureDataFromBytes((uint8_t *)pressureData, sizeof(pressureData));
 	osMessageQueuePut(pressureSampleHandle, pressureSampleBuffer, 0U, 0U);
 }
 
@@ -953,7 +953,7 @@ void controlTask(void *argument)
 			  
 			  //run display at the slower analog acquistion rate
 			  
-			  memcpy(&displayQueueBuffer[0], &ctrl_vars, sizeof(displayQueueBuffer[0]));
+			  memcpy(&displayQueueBuffer[0], (void *)&ctrl_vars, sizeof(displayQueueBuffer[0]));
 			  status = osMessageQueuePut(displayQueueHandle, displayQueueBuffer, 0U, 0U);
 
 
@@ -1104,10 +1104,8 @@ void displayTask(void *argument)
 		  case SetPressure:
 			  printed_length = sprintf(display_val,
 				  "Select: %s",
-				  pres_samp_mode,
-				  displayQueueBuffer[0].desired_pressure_setpoint);
-		  
-			  
+				  pres_samp_mode);
+		    
 			  break;
 		  case Purge:
 			  printed_length = sprintf(display_val,
@@ -1128,7 +1126,7 @@ void displayTask(void *argument)
 		  memset(display_val, ' ', sizeof(display_val));
 		  
 		  printed_length = sprintf(display_val,
-			  "Pump: %1d Valve %1d",
+			  "Pump: %1u Valve %1u",
 			  displayQueueBuffer[0].pump_cmd,
 			  displayQueueBuffer[0].valve_cmd);
 		  display_val[printed_length] = ' ';
